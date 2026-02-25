@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>影视库</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js"></script>
+<style>
+:root {
+  --bg: #070709;
+  --bg2: #0e0e12;
+  --bg3: #16161c;
+  --border: rgba(255,255,255,0.07);
+  --accent: #e8a020;
+  --accent2: #ff6b35;
+  --text: #e8e8ec;
+  --text-dim: rgba(232,232,236,0.45);
+  --text-muted: rgba(232,232,236,0.22);
+  --panel: rgba(10,10,14,0.97);
+  --ctrl-h: 56px;
+  --radius: 6px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Mono', 'SF Mono', monospace;
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
+}
+
+/* ─── GRAIN OVERLAY ─────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 9999;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+}
+
+/* ─── HOME PAGE ──────────────────────────────────── */
+#home {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-header {
+  padding: 48px 40px 32px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+}
+
+.home-title {
+  font-family: 'Syne', sans-serif;
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  line-height: 1;
+}
+
+.home-title span {
+  color: var(--accent);
+}
+
+.home-count {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.home-list {
+  flex: 1;
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 0 60px;
+  width: 100%;
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  padding: 0 40px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+  text-decoration: none;
+  color: inherit;
+  min-height: 64px;
+  gap: 20px;
+}
+
+.list-item:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.list-item:hover .item-arrow {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.list-item:hover .item-name {
+  color: #fff;
+}
+
+.item-num {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  min-width: 28px;
+  flex-shrink: 0;
+}
+
+.item-name {
+  flex: 1;
+  font-size: 0.95rem;
+  color: var(--text-dim);
+  letter-spacing: 0.01em;
+  transition: color 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-arrow {
+  font-size: 0.8rem;
+  color: var(--accent);
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 0.15s, transform 0.15s;
+  flex-shrink: 0;
+}
+
+.home-empty {
+  padding: 80px 40px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 600px) {
+  .home-header { padding: 36px 20px 24px; }
+  .list-item { padding: 0 20px; min-height: 56px; gap: 14px; }
+  .item-arrow { display: none; }
+}
+
+/* ─── PLAYER PAGE ────────────────────────────────── */
+#player-page {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  z-index: 1;
+}
+
+/* Video area */
+#video-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  background: #000;
+  min-height: 0;
+}
+
+#main-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* Loading spinner */
+#loading-spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+#loading-spinner.visible { opacity: 1; }
+
+.spinner {
+  width: 40px; height: 40px;
+  border: 2px solid rgba(255,255,255,0.1);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Fullscreen overlay (mobile) */
+#fs-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  z-index: 50;
+  backdrop-filter: blur(2px);
+}
+
+#fs-overlay.hidden { display: none; }
+
+.fs-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  background: rgba(232,160,32,0.12);
+  border: 1px solid rgba(232,160,32,0.4);
+  color: var(--accent);
+  padding: 24px 40px;
+  border-radius: 12px;
+  font-family: 'Syne', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.fs-btn:hover { background: rgba(232,160,32,0.2); }
+.fs-btn svg { width: 32px; height: 32px; }
+
+/* Back button */
+#back-btn {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 20;
+  background: rgba(0,0,0,0.5);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text);
+  padding: 8px 16px 8px 12px;
+  border-radius: 20px;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: opacity 0.3s;
+  backdrop-filter: blur(8px);
+}
+
+#back-btn.hidden { display: none !important; }
+#back-btn svg { width: 14px; height: 14px; }
+
+/* ─── CONTROLS ───────────────────────────────────── */
+#controls {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: linear-gradient(transparent, rgba(0,0,0,0.5) 20%, rgba(0,0,0,0.85));
+  padding: 40px 16px 12px;
+  z-index: 20;
+  transition: opacity 0.35s, visibility 0.35s;
+}
+
+#controls.hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* Progress bar */
+#progress-wrap {
+  position: relative;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+
+#progress-track {
+  width: 100%;
+  height: 3px;
+  background: rgba(255,255,255,0.18);
+  border-radius: 3px;
+  position: relative;
+  transition: height 0.15s;
+  overflow: visible;
+}
+
+#progress-wrap:hover #progress-track,
+#progress-wrap.dragging #progress-track {
+  height: 5px;
+}
+
+#progress-buf {
+  position: absolute;
+  top: 0; left: 0; height: 100%;
+  background: rgba(255,255,255,0.28);
+  border-radius: 3px;
+  width: 0;
+  transition: width 0.3s;
+}
+
+#progress-fill {
+  position: absolute;
+  top: 0; left: 0; height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  border-radius: 3px;
+  width: 0;
+}
+
+#progress-dot {
+  position: absolute;
+  top: 50%; right: 0;
+  width: 13px; height: 13px;
+  background: #fff;
+  border-radius: 50%;
+  transform: translate(50%, -50%);
+  box-shadow: 0 0 0 3px rgba(232,160,32,0.3);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+#progress-wrap:hover #progress-dot,
+#progress-wrap.dragging #progress-dot { opacity: 1; }
+
+/* Thumbnail preview */
+#thumb-preview {
+  position: absolute;
+  bottom: 34px;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  transform: translateX(-50%);
+  z-index: 30;
+}
+
+#thumb-canvas {
+  width: 160px;
+  height: 90px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: #111;
+  display: block;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+}
+
+#thumb-time-label {
+  font-size: 0.68rem;
+  color: #fff;
+  background: rgba(0,0,0,0.7);
+  padding: 2px 8px;
+  border-radius: 3px;
+  letter-spacing: 0.06em;
+}
+
+/* Control bar */
+#ctrl-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--ctrl-h);
+  padding: 0 2px;
+}
+
+.c-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.85);
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  transition: color 0.15s, background 0.15s;
+}
+.c-btn:hover { color: #fff; background: rgba(255,255,255,0.08); }
+.c-btn svg { width: 22px; height: 22px; display: block; }
+
+#time-info {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.65);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 0 4px;
+}
+
+#title-marquee {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.5);
+  letter-spacing: 0.03em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 8px;
+}
+
+/* Volume */
+#vol-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+#vol-slider {
+  width: 72px;
+  height: 3px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255,255,255,0.3);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+#vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  #vol-group { display: none; }
+  #title-marquee { display: none; }
+  #ctrl-bar { gap: 2px; }
+  #controls { padding: 30px 10px 8px; }
+}
+
+/* Safe area for notch phones */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  #controls { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+}
+
+/* ─── PLAYLIST PANEL ─────────────────────────────── */
+#pl-panel {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: min(320px, 90vw);
+  background: var(--panel);
+  backdrop-filter: blur(16px);
+  border-left: 1px solid var(--border);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#pl-panel.open { transform: translateX(0); }
+
+#pl-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.pl-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.pl-close {
+  background: none; border: none;
+  color: var(--text-muted); cursor: pointer;
+  padding: 4px; border-radius: 4px;
+  transition: color 0.15s;
+}
+.pl-close:hover { color: var(--text); }
+.pl-close svg { width: 18px; height: 18px; display: block; }
+
+#pl-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+#pl-list::-webkit-scrollbar { width: 4px; }
+#pl-list::-webkit-scrollbar-track { background: transparent; }
+#pl-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+.pl-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 20px;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-radius: 0;
+}
+
+.pl-item:hover { background: rgba(255,255,255,0.05); }
+
+.pl-item.active { background: rgba(232,160,32,0.08); }
+.pl-item.active .pl-item-name { color: var(--accent); }
+.pl-item.active .pl-item-num { color: var(--accent); }
+
+.pl-item-num {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  min-width: 22px;
+  flex-shrink: 0;
+  letter-spacing: 0.04em;
+}
+
+.pl-item-name {
+  flex: 1;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.pl-item-playing {
+  width: 16px; height: 16px;
+  flex-shrink: 0;
+  display: none;
+  color: var(--accent);
+}
+.pl-item.active .pl-item-playing { display: block; }
+.pl-item.active .pl-item-num { display: none; }
+</style>
+</head>
+<body>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════
+let videos = [];
+let currentVideo = '';
+let hlsPlayer = null;
+let hlsThumb = null;
+let thumbVideoEl = null;
+let controlsTimer = null;
+let isDragging = false;
+let thumbBusy = false;
+let pendingThumbTime = -1;
+
+// ══════════════════════════════════════════════════════
+//  BOOT
+// ══════════════════════════════════════════════════════
+async function boot() {
+  try {
+    const r = await fetch('./mp4.txt');
+    const txt = await r.text();
+    videos = txt.split('\n').map(s => s.trim()).filter(Boolean);
+  } catch(e) { videos = []; }
+
+  window.addEventListener('hashchange', route);
+  route();
+}
+
+function route() {
+  const raw = location.hash.slice(1);
+  const path = raw ? decodeURIComponent(raw) : '/';
+  if (path.startsWith('/play/')) {
+    const name = path.slice(6);
+    if (videos.includes(name)) { renderPlayer(name); return; }
+  }
+  renderHome();
+}
+
+// ══════════════════════════════════════════════════════
+//  HOME
+// ══════════════════════════════════════════════════════
+function renderHome() {
+  teardownPlayer();
+  document.title = '影视库';
+
+  const items = videos.length
+    ? videos.map((v, i) => `
+        <a class="list-item" href="#/play/${enc(v)}" data-video="${escAttr(v)}">
+          <span class="item-num">${String(i+1).padStart(2,'0')}</span>
+          <span class="item-name">${escHtml(v)}</span>
+          <span class="item-arrow">▶</span>
+        </a>`).join('')
+    : `<div class="home-empty">暂无视频 · 请检查 mp4.txt</div>`;
+
+  document.body.innerHTML = `
+    <div id="home">
+      <header class="home-header">
+        <h1 class="home-title">影<span>视</span>库</h1>
+        <span class="home-count">${videos.length} 部影片</span>
+      </header>
+      <nav class="home-list">${items}</nav>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+//  PLAYER
+// ══════════════════════════════════════════════════════
+function renderPlayer(name) {
+  currentVideo = name;
+  document.title = name;
+
+  document.body.innerHTML = `
+    <div id="player-page">
+      <div id="video-area">
+        <video id="main-video" playsinline webkit-playsinline preload="metadata"></video>
+
+        <div id="loading-spinner"><div class="spinner"></div></div>
+
+        <div id="fs-overlay" class="${isMobile() ? '' : 'hidden'}">
+          <button class="fs-btn" onclick="doEnterFS()">
+            ${svgFS()} 点击全屏
+          </button>
+        </div>
+
+        <button id="back-btn" class="${isMobile() ? 'hidden' : ''}" onclick="goHome()">
+          ${svgBack()} 返回
+        </button>
+
+        <div id="controls">
+          <!-- Progress bar -->
+          <div id="progress-wrap">
+            <div id="progress-track">
+              <div id="progress-buf"></div>
+              <div id="progress-fill">
+                <div id="progress-dot"></div>
+              </div>
+            </div>
+            <div id="thumb-preview">
+              <canvas id="thumb-canvas" width="320" height="180"></canvas>
+              <span id="thumb-time-label">0:00</span>
+            </div>
+          </div>
+
+          <!-- Control bar -->
+          <div id="ctrl-bar">
+            <button class="c-btn" id="btn-play" onclick="togglePlay()" title="播放/暂停">${svgPlay()}</button>
+            <span id="time-info">0:00 / 0:00</span>
+            <span id="title-marquee">${escHtml(name)}</span>
+            <div id="vol-group">
+              <button class="c-btn" id="btn-mute" onclick="toggleMute()" title="静音">${svgVolume()}</button>
+              <input type="range" id="vol-slider" min="0" max="1" step="0.02" value="1">
+            </div>
+            <button class="c-btn" id="btn-fs" onclick="toggleFS()" title="全屏">${svgFullscreen()}</button>
+            <button class="c-btn" id="btn-pl" onclick="togglePlaylist()" title="播放列表">${svgPlaylist()}</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Playlist panel -->
+      <div id="pl-panel">
+        <div id="pl-header">
+          <span class="pl-title">播放列表 · ${videos.length}</span>
+          <button class="pl-close" onclick="togglePlaylist()">${svgClose()}</button>
+        </div>
+        <div id="pl-list">
+          ${videos.map((v,i) => `
+            <div class="pl-item ${v===name?'active':''}" data-video="${escAttr(v)}" onclick="switchVideo(this.dataset.video)">
+              <span class="pl-item-num">${String(i+1).padStart(2,'0')}</span>
+              <svg class="pl-item-playing" viewBox="0 0 16 16" fill="currentColor">
+                <rect x="2" y="4" width="2.5" height="8" rx="1"/>
+                <rect x="6.75" y="2" width="2.5" height="12" rx="1"/>
+                <rect x="11.5" y="5" width="2.5" height="6" rx="1"/>
+              </svg>
+              <span class="pl-item-name">${escHtml(v)}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+
+  setupVideoEvents();
+  loadVideo(name);
+  setupProgress();
+
+  const volSlider = document.getElementById('vol-slider');
+  volSlider.addEventListener('input', () => {
+    const v = document.getElementById('main-video');
+    v.volume = +volSlider.value;
+    v.muted = v.volume === 0;
+    updateMuteBtn();
+  });
+
+  // Click to show/hide controls
+  document.getElementById('video-area').addEventListener('click', handleAreaClick);
+  document.getElementById('video-area').addEventListener('touchend', handleAreaClick, { passive: false });
+
+  // Fullscreen change
+  document.addEventListener('fullscreenchange', onFSChange);
+  document.addEventListener('webkitfullscreenchange', onFSChange);
+
+  scheduleHideControls();
+}
+
+function loadVideo(name) {
+  const video = document.getElementById('main-video');
+  if (!video) return;
+
+  const url = `https://mp4.dlozs.top/${enc(name)}/index.m3u8`;
+
+  if (Hls.isSupported()) {
+    if (hlsPlayer) hlsPlayer.destroy();
+    hlsPlayer = new Hls({ enableWorker: true, lowLatencyMode: false });
+    hlsPlayer.loadSource(url);
+    hlsPlayer.attachMedia(video);
+    hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+    hlsPlayer.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) console.warn('HLS error', d); });
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = url;
+    video.addEventListener('loadedmetadata', () => video.play().catch(() => {}), { once: true });
+  }
+
+  setupThumbnailPlayer(url);
+}
+
+function setupVideoEvents() {
+  const video = document.getElementById('main-video');
+  const spinner = document.getElementById('loading-spinner');
+
+  video.addEventListener('play', updatePlayBtn);
+  video.addEventListener('pause', updatePlayBtn);
+  video.addEventListener('waiting', () => spinner?.classList.add('visible'));
+  video.addEventListener('playing', () => spinner?.classList.remove('visible'));
+  video.addEventListener('canplay', () => spinner?.classList.remove('visible'));
+  video.addEventListener('timeupdate', updateProgress);
+  video.addEventListener('progress', updateBuffered);
+  video.addEventListener('durationchange', updateProgress);
+  video.addEventListener('ended', onEnded);
+  video.addEventListener('error', () => spinner?.classList.remove('visible'));
+}
+
+// ══════════════════════════════════════════════════════
+//  PLAYBACK
+// ══════════════════════════════════════════════════════
+function togglePlay() {
+  const v = document.getElementById('main-video');
+  if (!v) return;
+  v.paused ? v.play().catch(() => {}) : v.pause();
+  scheduleHideControls();
+}
+
+function updatePlayBtn() {
+  const v = document.getElementById('main-video');
+  const btn = document.getElementById('btn-play');
+  if (btn) btn.innerHTML = (v && !v.paused) ? svgPause() : svgPlay();
+}
+
+function toggleMute() {
+  const v = document.getElementById('main-video');
+  if (!v) return;
+  v.muted = !v.muted;
+  const slider = document.getElementById('vol-slider');
+  if (slider && v.muted) slider.value = 0;
+  else if (slider) slider.value = v.volume;
+  updateMuteBtn();
+}
+
+function updateMuteBtn() {
+  const v = document.getElementById('main-video');
+  const btn = document.getElementById('btn-mute');
+  if (btn) btn.innerHTML = (v && (v.muted || v.volume === 0)) ? svgMute() : svgVolume();
+}
+
+function onEnded() {
+  const idx = videos.indexOf(currentVideo);
+  if (idx >= 0 && idx < videos.length - 1) {
+    switchVideo(videos[idx + 1]);
+  } else {
+    showControls();
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  PROGRESS
+// ══════════════════════════════════════════════════════
+function updateProgress() {
+  const v = document.getElementById('main-video');
+  const fill = document.getElementById('progress-fill');
+  const timeEl = document.getElementById('time-info');
+  if (!v || !fill) return;
+  const pct = v.duration ? (v.currentTime / v.duration * 100) : 0;
+  fill.style.width = pct + '%';
+  if (timeEl) timeEl.textContent = `${fmtTime(v.currentTime)} / ${fmtTime(v.duration)}`;
+}
+
+function updateBuffered() {
+  const v = document.getElementById('main-video');
+  const buf = document.getElementById('progress-buf');
+  if (!v || !buf || !v.duration) return;
+  let end = 0;
+  for (let i = 0; i < v.buffered.length; i++) {
+    if (v.buffered.start(i) <= v.currentTime + 1) end = v.buffered.end(i);
+  }
+  buf.style.width = (end / v.duration * 100) + '%';
+}
+
+function fmtTime(s) {
+  if (!s || isNaN(s) || !isFinite(s)) return '0:00';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return m >= 60
+    ? `${Math.floor(m/60)}:${String(m%60).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+    : `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+function setupProgress() {
+  const wrap = document.getElementById('progress-wrap');
+  if (!wrap) return;
+
+  const getPct = (e) => {
+    const rect = wrap.getBoundingClientRect();
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    return Math.max(0, Math.min(1, (x - rect.left) / rect.width));
+  };
+
+  const seekTo = (pct) => {
+    const v = document.getElementById('main-video');
+    if (v && v.duration) v.currentTime = pct * v.duration;
+  };
+
+  const showThumb = (pct, clientX) => {
+    const preview = document.getElementById('thumb-preview');
+    const timeLabel = document.getElementById('thumb-time-label');
+    const v = document.getElementById('main-video');
+    if (!preview || !v || !v.duration) return;
+
+    const rect = wrap.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const HALF = 80;
+    const clampedX = Math.max(HALF, Math.min(rect.width - HALF, x));
+    preview.style.left = clampedX + 'px';
+    preview.style.display = 'flex';
+
+    const t = pct * v.duration;
+    if (timeLabel) timeLabel.textContent = fmtTime(t);
+    requestThumbAt(t);
+  };
+
+  const hideThumb = () => {
+    const p = document.getElementById('thumb-preview');
+    if (p) p.style.display = 'none';
+  };
+
+  // Mouse
+  wrap.addEventListener('mousedown', (e) => {
+    e.stopPropagation();
+    isDragging = true;
+    wrap.classList.add('dragging');
+    const pct = getPct(e);
+    seekTo(pct);
+    showThumb(pct, e.clientX);
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const pct = getPct(e);
+    seekTo(pct);
+    showThumb(pct, e.clientX);
+  });
+  document.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    wrap.classList.remove('dragging');
+    hideThumb();
+  });
+  wrap.addEventListener('mousemove', (e) => {
+    if (isDragging) return;
+    showThumb(getPct(e), e.clientX);
+    e.stopPropagation();
+  });
+  wrap.addEventListener('mouseleave', () => { if (!isDragging) hideThumb(); });
+
+  // Touch
+  wrap.addEventListener('touchstart', (e) => {
+    e.stopPropagation();
+    isDragging = true;
+    wrap.classList.add('dragging');
+    const pct = getPct(e);
+    seekTo(pct);
+    showThumb(pct, e.touches[0].clientX);
+  }, { passive: true });
+  wrap.addEventListener('touchmove', (e) => {
+    e.stopPropagation();
+    const pct = getPct(e);
+    seekTo(pct);
+    showThumb(pct, e.touches[0].clientX);
+  }, { passive: true });
+  wrap.addEventListener('touchend', () => {
+    isDragging = false;
+    wrap.classList.remove('dragging');
+    hideThumb();
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  THUMBNAIL PREVIEW
+// ══════════════════════════════════════════════════════
+function setupThumbnailPlayer(url) {
+  if (thumbVideoEl) {
+    if (hlsThumb) { hlsThumb.destroy(); hlsThumb = null; }
+    thumbVideoEl.remove();
+  }
+
+  thumbVideoEl = document.createElement('video');
+  thumbVideoEl.muted = true;
+  thumbVideoEl.crossOrigin = 'anonymous';
+  thumbVideoEl.preload = 'none';
+  thumbVideoEl.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;top:-9999px';
+  document.body.appendChild(thumbVideoEl);
+
+  if (Hls.isSupported()) {
+    hlsThumb = new Hls({ enableWorker: false, maxBufferLength: 8, maxMaxBufferLength: 16 });
+    hlsThumb.loadSource(url);
+    hlsThumb.attachMedia(thumbVideoEl);
+  } else if (thumbVideoEl.canPlayType('application/vnd.apple.mpegurl')) {
+    thumbVideoEl.src = url;
+  }
+}
+
+function requestThumbAt(time) {
+  if (!thumbVideoEl) return;
+  pendingThumbTime = time;
+  if (!thumbBusy) flushThumb();
+}
+
+function flushThumb() {
+  if (pendingThumbTime < 0 || !thumbVideoEl) return;
+  const t = pendingThumbTime;
+  pendingThumbTime = -1;
+  thumbBusy = true;
+
+  thumbVideoEl.currentTime = t;
+
+  const done = () => {
+    thumbVideoEl.removeEventListener('seeked', done);
+    clearTimeout(timeout);
+    const canvas = document.getElementById('thumb-canvas');
+    if (canvas) {
+      try {
+        canvas.getContext('2d').drawImage(thumbVideoEl, 0, 0, canvas.width, canvas.height);
+      } catch(_) {}
+    }
+    thumbBusy = false;
+    if (pendingThumbTime >= 0) flushThumb();
+  };
+
+  const timeout = setTimeout(() => {
+    thumbVideoEl.removeEventListener('seeked', done);
+    thumbBusy = false;
+    if (pendingThumbTime >= 0) flushThumb();
+  }, 1200);
+
+  thumbVideoEl.addEventListener('seeked', done, { once: true });
+}
+
+// ══════════════════════════════════════════════════════
+//  CONTROLS VISIBILITY
+// ══════════════════════════════════════════════════════
+let tappedOnControl = false;
+
+function handleAreaClick(e) {
+  if (isDragging) return;
+  if (e.target.closest('#controls') ||
+      e.target.closest('#pl-panel') ||
+      e.target.closest('#fs-overlay') ||
+      e.target.closest('#back-btn')) {
+    tappedOnControl = true;
+    scheduleHideControls();
+    return;
+  }
+  if (e.type === 'touchend') e.preventDefault();
+  toggleControls();
+}
+
+function toggleControls() {
+  const ctrl = document.getElementById('controls');
+  if (!ctrl) return;
+  ctrl.classList.contains('hidden') ? showControls() : hideControlsNow();
+}
+
+function showControls() {
+  const ctrl = document.getElementById('controls');
+  if (ctrl) ctrl.classList.remove('hidden');
+  scheduleHideControls();
+}
+
+function hideControlsNow() {
+  clearTimeout(controlsTimer);
+  const ctrl = document.getElementById('controls');
+  if (ctrl) ctrl.classList.add('hidden');
+}
+
+function scheduleHideControls() {
+  clearTimeout(controlsTimer);
+  const ctrl = document.getElementById('controls');
+  if (ctrl) ctrl.classList.remove('hidden');
+  controlsTimer = setTimeout(() => {
+    const v = document.getElementById('main-video');
+    const plOpen = document.getElementById('pl-panel')?.classList.contains('open');
+    if (v && !v.paused && !plOpen) {
+      const ctrl = document.getElementById('controls');
+      if (ctrl) ctrl.classList.add('hidden');
+    }
+  }, 3500);
+}
+
+// ══════════════════════════════════════════════════════
+//  FULLSCREEN
+// ══════════════════════════════════════════════════════
+function doEnterFS() {
+  const el = document.getElementById('player-page');
+  if (!el) return;
+  if (el.requestFullscreen) el.requestFullscreen();
+  else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  else {
+    // iOS fallback: use video native fullscreen
+    const v = document.getElementById('main-video');
+    if (v && v.webkitEnterFullscreen) v.webkitEnterFullscreen();
+  }
+}
+
+function toggleFS() {
+  const isFS = document.fullscreenElement || document.webkitFullscreenElement;
+  if (isFS) {
+    if (document.exitFullscreen) document.exitFullscreen();
+    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+  } else {
+    doEnterFS();
+  }
+}
+
+function onFSChange() {
+  const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  const overlay = document.getElementById('fs-overlay');
+  const backBtn = document.getElementById('back-btn');
+  const fsBtn = document.getElementById('btn-fs');
+
+  if (overlay) overlay.classList.add('hidden');
+  if (backBtn) backBtn.classList.toggle('hidden', isFS);
+  if (fsBtn) fsBtn.innerHTML = isFS ? svgExitFS() : svgFullscreen();
+
+  // Mobile: exit fullscreen → go home
+  if (!isFS && isMobile()) goHome();
+}
+
+// ══════════════════════════════════════════════════════
+//  PLAYLIST & SWITCH
+// ══════════════════════════════════════════════════════
+function togglePlaylist() {
+  const panel = document.getElementById('pl-panel');
+  if (!panel) return;
+  const isOpen = panel.classList.toggle('open');
+  if (isOpen) {
+    showControls();
+    // Scroll active item into view
+    const active = panel.querySelector('.pl-item.active');
+    if (active) active.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  } else {
+    scheduleHideControls();
+  }
+}
+
+function switchVideo(name) {
+  if (!name || !videos.includes(name)) return;
+  currentVideo = name;
+  document.title = name;
+
+  // Update URL without triggering route
+  history.replaceState(null, '', '#/play/' + enc(name));
+
+  // Update title bar
+  const titleBar = document.getElementById('title-marquee');
+  if (titleBar) titleBar.textContent = name;
+
+  // Update playlist highlight
+  document.querySelectorAll('.pl-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.video === name);
+  });
+
+  // Close playlist
+  document.getElementById('pl-panel')?.classList.remove('open');
+
+  // Reload video
+  const video = document.getElementById('main-video');
+  if (!video) return;
+
+  const url = `https://mp4.dlozs.top/${enc(name)}/index.m3u8`;
+
+  if (Hls.isSupported()) {
+    if (hlsPlayer) hlsPlayer.destroy();
+    hlsPlayer = new Hls({ enableWorker: true });
+    hlsPlayer.loadSource(url);
+    hlsPlayer.attachMedia(video);
+    hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+  } else {
+    video.src = url;
+    video.play().catch(() => {});
+  }
+
+  setupThumbnailPlayer(url);
+  scheduleHideControls();
+}
+
+// ══════════════════════════════════════════════════════
+//  UTILS
+// ══════════════════════════════════════════════════════
+function goHome() {
+  const isFS = document.fullscreenElement || document.webkitFullscreenElement;
+  if (isFS) {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) exit.call(document).then(navHome).catch(navHome);
+    else navHome();
+  } else {
+    navHome();
+  }
+}
+
+function navHome() {
+  teardownPlayer();
+  location.hash = '/';
+}
+
+function teardownPlayer() {
+  clearTimeout(controlsTimer);
+  if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
+  if (hlsThumb) { hlsThumb.destroy(); hlsThumb = null; }
+  if (thumbVideoEl) { thumbVideoEl.remove(); thumbVideoEl = null; }
+  document.removeEventListener('fullscreenchange', onFSChange);
+  document.removeEventListener('webkitfullscreenchange', onFSChange);
+  isDragging = false;
+  thumbBusy = false;
+  pendingThumbTime = -1;
+}
+
+function isMobile() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
+function enc(s) { return encodeURIComponent(s); }
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) { return s.replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+// ══════════════════════════════════════════════════════
+//  SVG ICONS
+// ══════════════════════════════════════════════════════
+function svgPlay() {
+  return `<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>`;
+}
+function svgPause() {
+  return `<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="4" height="16" rx="1"/><rect x="15" y="4" width="4" height="16" rx="1"/></svg>`;
+}
+function svgVolume() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11,5 6,9 2,9 2,15 6,15 11,19" fill="currentColor" stroke="none"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`;
+}
+function svgMute() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11,5 6,9 2,9 2,15 6,15 11,19" fill="currentColor" stroke="none"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`;
+}
+function svgFullscreen() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
+}
+function svgExitFS() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/></svg>`;
+}
+function svgPlaylist() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1" fill="currentColor"/><circle cx="3" cy="12" r="1" fill="currentColor"/><circle cx="3" cy="18" r="1" fill="currentColor"/></svg>`;
+}
+function svgFS() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="32" height="32"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
+}
+function svgBack() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>`;
+}
+function svgClose() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+}
+
+// ══════════════════════════════════════════════════════
+//  START
+// ══════════════════════════════════════════════════════
+boot();
+</script>
+</body>
+</html>
